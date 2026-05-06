@@ -4,12 +4,12 @@ from io import BytesIO
 from processor import load_mapping, process_sales, write_excel
 
 st.set_page_config(
-    page_title="TicketVault Report Processor",
+    page_title="StubHub Channel Share Report Creator",
     page_icon="🎟️",
     layout="centered",
 )
 
-st.title("🎟️ TicketVault Report Processor")
+st.title("🎟️StubHub Channel Share Report Creator")
 st.caption("Upload your company mapping file and monthly sales exports to generate split output files.")
 
 # ── Step 1: Mapping file ──────────────────────────────────────────────────────
