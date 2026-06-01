@@ -51,6 +51,7 @@ COMPANY_MAPPING: dict[str, str] = {
     "bearhawk group":        "ystickets",
     "best tix":              "ystickets",
     "ticketwonders llc":     "ystickets",
+    "ticketwonders2 llc":     "ystickets",
     "upside llc":            "ystickets",
     "not found":             "ystickets",
     "ys tickets":            "ystickets",
