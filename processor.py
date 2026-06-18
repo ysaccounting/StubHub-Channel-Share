@@ -44,6 +44,7 @@ COL_WIDTHS = [18, 22, 22, 14, 30, 18, 14, 8, 14]
 COMPANY_MAPPING: dict[str, str] = {
     "damon and crew":        "ystickets",
     "bearhawk - aaron":      "ystickets",
+    "bearhawk - ari":        "ystickets",
     "bearhawk - chris":      "ystickets",
     "bearhawk - dylan":      "ystickets",
     "bearhawk - gray":       "ystickets",
