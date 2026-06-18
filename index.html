@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StubHub Channel Share Report</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: #EAECF0; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center; padding: 2rem 1rem; color: #111; }
+  .card { background: #fff; border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07), 0 8px 32px rgba(0,0,0,.09);
+    width: 100%; max-width: 620px; overflow: hidden; }
+  .card-body { padding: 2rem 2rem 1.75rem; }
+  .card-title { font-size: 1.3rem; font-weight: 700; margin-bottom: .35rem; letter-spacing: -.01em; }
+  .card-sub { font-size: .875rem; color: #6B7280; line-height: 1.6; margin-bottom: 1.6rem; }
+  .section-label { font-size: .65rem; font-weight: 600; letter-spacing: 2px;
+    text-transform: uppercase; color: #9CA3AF; margin-bottom: .5rem; }
+  .dropzone { border: 2px dashed #C4C9D8; border-radius: 12px; background: #F8F9FC;
+    padding: 1.4rem 1.5rem; text-align: center; cursor: pointer;
+    transition: border-color .2s, background .2s; position: relative; }
+  .dropzone:hover, .dropzone.drag-over { border-color: #7B8DB0; background: #F0F3FA; }
+  .dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    width: 100%; height: 100%; }
+  .dropzone-text { font-size: .9rem; color: #374151; }
+  .dropzone-text strong { font-weight: 600; }
+  .dropzone-text a { color: #4B6FBE; text-decoration: none; }
+  .dropzone-text a:hover { text-decoration: underline; }
+  .dropzone-hint { font-size: .78rem; color: #9CA3AF; margin-top: .25rem; }
+  .file-list { display: flex; flex-direction: column; gap: .35rem; margin-top: .6rem; }
+  .file-pill { display: flex; align-items: center; gap: .6rem; background: #F3F4F6;
+    border-radius: 7px; padding: .4rem .7rem; font-size: .8rem; color: #374151; }
+  .file-pill .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-pill .remove { margin-left: auto; cursor: pointer; color: #9CA3AF; background: none;
+    border: none; font-size: 1rem; line-height: 1; padding: 0 2px; }
+  .file-pill .remove:hover { color: #374151; }
+  .actions { display: flex; gap: .75rem; margin-top: 1.5rem; }
+  .btn-process { flex: 1; background: #4B5563; color: #fff; border: none; border-radius: 8px;
+    padding: .7rem 1.25rem; font-family: inherit; font-weight: 600; font-size: .9rem;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: .5rem;
+    transition: background .15s; }
+  .btn-process:hover:not(:disabled) { background: #1F2937; }
+  .btn-process:disabled { opacity: .55; cursor: not-allowed; }
+  .btn-clear { background: #fff; color: #374151; border: 1px solid #D1D5DB; border-radius: 8px;
+    padding: .7rem 1.25rem; font-family: inherit; font-weight: 500; font-size: .9rem;
+    cursor: pointer; transition: background .15s, border-color .15s; }
+  .btn-clear:hover { background: #F9FAFB; border-color: #9CA3AF; }
+  .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.35);
+    border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .results { border-top: 1px solid #F3F4F6; }
+  .results-body { padding: 1.25rem 2rem 1.5rem; display: flex; flex-direction: column; gap: .75rem; }
+  .status-msg { font-size: .85rem; color: #374151; background: #F0FDF4;
+    border: 1px solid #BBF7D0; border-radius: 8px; padding: .65rem .9rem; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+  .stat-card { background: #F8F9FC; border-radius: 10px; padding: .75rem 1rem; }
+  .stat-label { font-size: .65rem; font-weight: 600; letter-spacing: 1.5px;
+    text-transform: uppercase; color: #9CA3AF; margin-bottom: .2rem; }
+  .stat-val { font-size: 1.25rem; font-weight: 700; color: #111; }
+  .stat-sub { font-size: .78rem; color: #6B7280; margin-top: .15rem; }
+  .btn-download { display: block; width: 100%; background: #374151; color: #fff; border: none;
+    border-radius: 8px; padding: .7rem 1.25rem; font-family: inherit; font-weight: 600;
+    font-size: .9rem; cursor: pointer; text-align: center; text-decoration: none;
+    transition: background .15s; }
+  .btn-download:hover { background: #1F2937; }
+  .btn-download + .btn-download { margin-top: .5rem; }
+  .warning-box { background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 10px;
+    padding: .85rem 1.1rem; font-size: .85rem; color: #92400E; line-height: 1.6; }
+  .warning-box strong { font-weight: 600; }
+  .warning-box code { font-family: monospace; font-size: .8rem; background: #FEF3C7;
+    padding: 1px 4px; border-radius: 3px; }
+  .error-box { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 10px;
+    padding: .85rem 1.1rem; font-size: .85rem; color: #B91C1C; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-body">
+    <div class="card-title">StubHub Channel Share Report</div>
+    <div class="card-sub">Upload invoice details reports from TicketVault to generate the monthly reports needed for StubHub.</div>
+
+    <div class="section-label">Sales Export Files</div>
+    <div class="dropzone" id="dzSales">
+      <input type="file" id="salesInput" accept=".xlsx" multiple>
+      <div class="dropzone-text">Drag &amp; drop or <a href="#" class="browse">browse</a></div>
+      <div class="dropzone-hint">Accepts .xlsx · multiple files allowed · duplicates removed automatically</div>
+    </div>
+    <div class="file-list" id="fileList"></div>
+
+    <div class="actions">
+      <button class="btn-process" id="processBtn" disabled>
+        <span id="btnLabel">Generate Reports</span>
+        <div class="spinner" id="spinner"></div>
+      </button>
+      <button class="btn-clear" id="clearBtn">Clear</button>
+    </div>
+  </div>
+  <div class="results" id="results" style="display:none;"></div>
+</div>
+
+<script>
+  const files = [];
+  const processBtn = document.getElementById('processBtn');
+  const btnLabel   = document.getElementById('btnLabel');
+  const spinner    = document.getElementById('spinner');
+  const resultsDiv = document.getElementById('results');
+  const fileList   = document.getElementById('fileList');
+  const dz         = document.getElementById('dzSales');
+  const input      = document.getElementById('salesInput');
+
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); addFiles(e.dataTransfer.files); });
+  input.addEventListener('change', () => { addFiles(input.files); input.value = ''; });
+  dz.querySelector('.browse').addEventListener('click', e => { e.preventDefault(); input.click(); });
+
+  function addFiles(incoming) {
+    for (const f of incoming) {
+      if (f.name.endsWith('.xlsx') && !files.find(x => x.name === f.name)) files.push(f);
+    }
+    render();
+  }
+
+  function removeFile(name) {
+    const i = files.findIndex(f => f.name === name);
+    if (i !== -1) files.splice(i, 1);
+    render();
+  }
+
+  function render() {
+    fileList.innerHTML = files.map(f => `
+      <div class="file-pill">
+        <span class="fname">${f.name}</span>
+        <button class="remove" onclick="removeFile('${f.name.replace(/'/g,"\\'")}')">×</button>
+      </div>`).join('');
+    processBtn.disabled = files.length === 0;
+  }
+
+  function fmt(n) { return Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' }); }
+  function fmtN(n) { return Number(n).toLocaleString('en-US'); }
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    files.length = 0;
+    render();
+    resultsDiv.style.display = 'none';
+    resultsDiv.innerHTML = '';
+  });
+
+  processBtn.addEventListener('click', async () => {
+    if (!files.length) return;
+    processBtn.disabled = true;
+    btnLabel.textContent = 'Processing…';
+    spinner.style.display = 'block';
+    resultsDiv.style.display = 'none';
+    resultsDiv.innerHTML = '';
+
+    const fd = new FormData();
+    files.forEach(f => fd.append('sales_files', f));
+
+    try {
+      const resp = await fetch('/process', { method: 'POST', body: fd });
+      const d    = await resp.json();
+
+      if (!resp.ok || d.error) {
+        resultsDiv.innerHTML = `<div class="results-body"><div class="error-box"><strong>Error:</strong> ${d.error || 'Processing failed.'}</div></div>`;
+      } else {
+        const warnHtml = d.unmapped && d.unmapped.length
+          ? `<div class="warning-box">
+               <strong>Warning:</strong> ${d.unmapped.length} company name${d.unmapped.length > 1 ? 's' : ''} not found in the mapping — rows excluded. Add them to <code>COMPANY_MAPPING</code> in <code>processor.py</code> and redeploy:<br><br>
+               ${d.unmapped.map(c => `<code>${c}</code>`).join('<br>')}
+             </div>` : '';
+
+        resultsDiv.innerHTML = `
+          <div class="results-body">
+            <div class="status-msg">
+              Done — ${fmtN(d.total_deduped)} unique rows from ${fmtN(d.total_raw)} total
+              (${fmtN(d.duplicates)} duplicates removed, ${fmtN(d.zero_dollar)} zero-dollar rows excluded)
+            </div>
+            ${warnHtml}
+            <div class="stat-grid">
+              <div class="stat-card">
+                <div class="stat-label">ystickets</div>
+                <div class="stat-val">${fmtN(d.ys_rows)} rows</div>
+                <div class="stat-sub">${fmt(d.ys_sales)}</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">yitzknopf</div>
+                <div class="stat-val">${fmtN(d.yitz_rows)} rows</div>
+                <div class="stat-sub">${fmt(d.yitz_sales)}</div>
+              </div>
+            </div>
+            <a class="btn-download" href="${d.download_ys}">Download ${d.month_label} - ystickets.xlsx</a>
+            <a class="btn-download" href="${d.download_yitz}">Download ${d.month_label} - yitzknopf.xlsx</a>
+          </div>`;
+      }
+    } catch (err) {
+      resultsDiv.innerHTML = `<div class="results-body"><div class="error-box"><strong>Network error:</strong> ${err.message}</div></div>`;
+    } finally {
+      processBtn.disabled = files.length === 0;
+      btnLabel.textContent = 'Generate Reports';
+      spinner.style.display = 'none';
+      resultsDiv.style.display = 'block';
+    }
+  });
+</script>
+</body>
+</html>

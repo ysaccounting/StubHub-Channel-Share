@@ -1,74 +1,64 @@
-import streamlit as st
-import pandas as pd
-from io import BytesIO
-from processor import process_sales, write_excel, COMPANY_MAPPING
+"""
+StubHub Channel Share Report — backend.
 
-st.set_page_config(
-    page_title="StubHub Channel Share Report",
-    page_icon=None,
-    layout="centered",
-)
+Upload one or more TicketVault Invoice Details Report exports (.xlsx).
+The app combines them, deduplicates, maps companies to seller accounts,
+and produces two formatted Excel files — one for ystickets, one for yitzknopf.
+"""
 
-st.title("StubHub Channel Share Report")
-st.caption("Upload invoice details reports from TicketVault to generate the monthly reports needed for StubHub.")
+import io
+import os
+import re
+import time
+import uuid
+import shutil
+import tempfile
 
-# ── Sales files ───────────────────────────────────────────────────────────────
+from flask import Flask, request, jsonify, send_file, send_from_directory, abort
+from processor import process_sales, write_excel
 
-st.divider()
+app = Flask(__name__, static_folder=None)
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+STORE_DIR  = os.path.join(tempfile.gettempdir(), "ticketvault_store")
+os.makedirs(STORE_DIR, exist_ok=True)
 
-sales_files = st.file_uploader(
-    "Upload sales export files",
-    type=["xlsx"],
-    accept_multiple_files=True,
-    key="sales",
-    help="Multiple files are combined and deduplicated automatically",
-    label_visibility="collapsed",
-)
 
-# ── Company mapping reference ─────────────────────────────────────────────────
-
-with st.expander("View company mapping"):
-    mapping_df = pd.DataFrame([
-        {"Company": k.title(), "Account": v}
-        for k, v in sorted(COMPANY_MAPPING.items(), key=lambda x: (x[1], x[0]))
-    ])
-    st.dataframe(mapping_df, use_container_width=True, hide_index=True)
-
-# ── Process ───────────────────────────────────────────────────────────────────
-
-st.divider()
-
-if not sales_files:
-    st.info("Waiting for at least one sales export file.")
-    st.session_state.pop("result", None)
-    st.session_state.pop("ys_bytes", None)
-    st.session_state.pop("yitz_bytes", None)
-
-if st.button("Process files", disabled=not sales_files, type="primary", use_container_width=True):
-    with st.spinner("Processing..."):
+def _cleanup_old(max_age_seconds=12 * 3600):
+    now = time.time()
+    for name in os.listdir(STORE_DIR):
+        path = os.path.join(STORE_DIR, name)
         try:
-            result = process_sales(sales_files)
+            if os.path.isdir(path) and now - os.path.getmtime(path) > max_age_seconds:
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            pass
 
-            ys_buf = BytesIO()
-            write_excel(result["ys_rows"], ys_buf)
 
-            yitz_buf = BytesIO()
-            write_excel(result["yitz_rows"], yitz_buf)
+def _safe(s):
+    return re.sub(r'[\\/:*?"<>|]+', " ", s).strip() if s else s
 
-            st.session_state["result"]     = result
-            st.session_state["ys_bytes"]   = ys_buf.getvalue()
-            st.session_state["yitz_bytes"] = yitz_buf.getvalue()
 
-        except Exception as e:
-            st.error(f"Processing error: {e}")
-            raise e
+# ── Routes ────────────────────────────────────────────────────────────────────
 
-# ── Results ───────────────────────────────────────────────────────────────────
+@app.route("/")
+def index():
+    return send_from_directory(BASE_DIR, "index.html")
 
-if "result" in st.session_state:
-    result        = st.session_state["result"]
-    ys_bytes      = st.session_state["ys_bytes"]
-    yitz_bytes    = st.session_state["yitz_bytes"]
+
+@app.route("/process", methods=["POST"])
+def process():
+    uploaded = request.files.getlist("sales_files")
+    files    = [(f.filename, f.read()) for f in uploaded if f.filename]
+
+    if not files:
+        return jsonify({"error": "Please upload at least one TicketVault export."}), 400
+
+    try:
+        # Wrap raw bytes back into file-like objects for processor
+        file_likes = [io.BytesIO(data) for _, data in files]
+        result     = process_sales(file_likes)
+    except Exception as exc:
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 
     month_label    = result["month_label"]
     ys_rows        = result["ys_rows"]
@@ -78,62 +68,73 @@ if "result" in st.session_state:
     total_deduped  = result["total_deduped"]
     total_filtered = result["total_filtered"]
 
-    st.success(
-        f"Done — {total_deduped:,} unique rows from {total_raw:,} total "
-        f"({total_raw - total_deduped:,} duplicates removed, "
-        f"{total_deduped - total_filtered:,} zero-dollar rows excluded)"
-    )
+    # Generate Excel files
+    ys_buf   = io.BytesIO()
+    yitz_buf = io.BytesIO()
+    write_excel(ys_rows,   ys_buf)
+    write_excel(yitz_rows, yitz_buf)
 
-    if unmapped:
-        st.warning(
-            f"**{len(unmapped)} company name(s) not found in mapping — rows excluded.** "
-            f"Add them to `COMPANY_MAPPING` in `processor.py` and redeploy:\n\n"
-            + "\n".join(f"- `{c}`" for c in sorted(unmapped))
-        )
+    # Store to temp folder for download
+    token  = uuid.uuid4().hex
+    folder = os.path.join(STORE_DIR, token)
+    os.makedirs(folder, exist_ok=True)
+
+    ys_filename   = f"{month_label} - ystickets.xlsx"
+    yitz_filename = f"{month_label} - yitzknopf.xlsx"
+
+    with open(os.path.join(folder, ys_filename), "wb") as fh:
+        fh.write(ys_buf.getvalue())
+    with open(os.path.join(folder, yitz_filename), "wb") as fh:
+        fh.write(yitz_buf.getvalue())
+
+    _cleanup_old()
 
     ys_sales   = sum(r["Ticket Sales"] for r in ys_rows)
     yitz_sales = sum(r["Ticket Sales"] for r in yitz_rows)
 
-    col_l, col_r = st.columns(2)
-    with col_l:
-        st.markdown("**ystickets**")
-        st.metric("Rows",  f"{len(ys_rows):,}")
-        st.metric("Sales", f"${ys_sales:,.2f}")
-    with col_r:
-        st.markdown("**yitzknopf**")
-        st.metric("Rows",  f"{len(yitz_rows):,}")
-        st.metric("Sales", f"${yitz_sales:,.2f}")
+    return jsonify({
+        "month_label":      month_label,
+        "total_raw":        total_raw,
+        "total_deduped":    total_deduped,
+        "total_filtered":   total_filtered,
+        "duplicates":       total_raw - total_deduped,
+        "zero_dollar":      total_deduped - total_filtered,
+        "ys_rows":          len(ys_rows),
+        "ys_sales":         round(ys_sales, 2),
+        "yitz_rows":        len(yitz_rows),
+        "yitz_sales":       round(yitz_sales, 2),
+        "unmapped":         sorted(unmapped),
+        "download_ys":      f"/download/{token}?which=ystickets",
+        "download_yitz":    f"/download/{token}?which=yitzknopf",
+    })
 
-    with st.expander("Sales by customer"):
-        breakdown = {}
-        for r in ys_rows + yitz_rows:
-            c = r["Customer"]
-            breakdown.setdefault(c, {"Rows": 0, "Total Sales": 0.0})
-            breakdown[c]["Rows"] += 1
-            breakdown[c]["Total Sales"] += r["Ticket Sales"]
-        bd_df = pd.DataFrame([
-            {"Customer": k, "Rows": v["Rows"], "Total Sales": f"${v['Total Sales']:,.2f}"}
-            for k, v in sorted(breakdown.items(), key=lambda x: -x[1]["Total Sales"])
-        ])
-        st.dataframe(bd_df, use_container_width=True, hide_index=True)
 
-    st.divider()
-    st.subheader(f"Download — {month_label}")
+@app.route("/download/<token>")
+def download(token):
+    folder = os.path.join(STORE_DIR, os.path.basename(token))
+    if not os.path.isdir(folder):
+        abort(404)
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.download_button(
-            label=f"Download {month_label} - ystickets.xlsx",
-            data=ys_bytes,
-            file_name=f"{month_label} - ystickets.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-    with col_b:
-        st.download_button(
-            label=f"Download {month_label} - yitzknopf.xlsx",
-            data=yitz_bytes,
-            file_name=f"{month_label} - yitzknopf.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+    which = request.args.get("which", "")
+    files = [f for f in os.listdir(folder) if f.lower().endswith(".xlsx")]
+    if not files:
+        abort(404)
+
+    if which == "ystickets":
+        pick = next((f for f in files if "ystickets" in f), files[0])
+    elif which == "yitzknopf":
+        pick = next((f for f in files if "yitzknopf" in f), files[0])
+    else:
+        pick = files[0]
+
+    return send_file(
+        os.path.join(folder, pick),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=pick,
+    )
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
